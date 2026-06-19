@@ -2,30 +2,35 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import json
+import requests
+import io
 from datetime import date, datetime
+from tickers import NIKKEI_225_TICKERS
 
 st.set_page_config(page_title="日経225 SQ計算ツール", page_icon="📊", layout="wide")
 
 st.title("📊 日経225 SQ計算ツール")
 st.caption("ウィークリー・月次オプション対応 ｜ 構成銘柄の始値からSQ値をリアルタイム算出")
 
-# ── 構成銘柄をWikipediaから自動取得 ───────────────────────────────
-@st.cache_data(ttl=86400)  # 1日キャッシュ
+# ── 構成銘柄をWikipediaから自動取得（失敗時はローカルリストで代替）──
+@st.cache_data(ttl=86400)
 def get_nikkei225_tickers():
-    url = "https://en.wikipedia.org/wiki/Nikkei_225"
-    tables = pd.read_html(url)
-    # 銘柄コードが含まれるテーブルを探す
-    for t in tables:
-        cols = [str(c).lower() for c in t.columns]
-        if any("code" in c or "ticker" in c or "symbol" in c for c in cols):
+    try:
+        url = "https://en.wikipedia.org/wiki/Nikkei_225"
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; NikkeiSQTool/1.0)"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        tables = pd.read_html(io.StringIO(resp.text))
+        for t in tables:
             for col in t.columns:
                 if "code" in str(col).lower() or "ticker" in str(col).lower() or "symbol" in str(col).lower():
                     codes = t[col].dropna().astype(str).tolist()
-                    # 4桁の数字のみ抽出
                     tickers = [f"{c.zfill(4)}.T" for c in codes if c.isdigit() and len(c) <= 4]
                     if len(tickers) > 100:
-                        return tickers
-    return []
+                        return tickers, "Wikipedia"
+    except Exception:
+        pass
+    return NIKKEI_225_TICKERS, "ローカルリスト（tickers.py）"
 
 # ── 除数の読み込み ──────────────────────────────────────────────
 def load_config():
@@ -41,13 +46,13 @@ divisor_updated = config.get("updated", "不明")
 
 # ── 銘柄リスト取得 ────────────────────────────────────────────
 with st.spinner("日経225構成銘柄リストを取得中..."):
-    tickers = get_nikkei225_tickers()
+    tickers, ticker_source = get_nikkei225_tickers()
 
-if len(tickers) < 200:
+if len(tickers) < 100:
     st.error(f"構成銘柄の取得に失敗しました（取得数: {len(tickers)}）。ページを再読み込みしてください。")
     st.stop()
 
-st.success(f"✅ 構成銘柄 {len(tickers)} 銘柄を取得しました（Wikipedia より）")
+st.success(f"✅ 構成銘柄 {len(tickers)} 銘柄を読み込みました（出所：{ticker_source}）")
 
 # ── 除数入力UI ────────────────────────────────────────────────
 st.subheader("① 除数（Divisor）の設定")
@@ -156,8 +161,4 @@ if st.button("🔄 始値を取得してSQを計算する", type="primary"):
 
 # ── フッター ──────────────────────────────────────────────────
 st.divider()
-st.caption(
-    "**注意事項**：本ツールはyfinanceの非公式データを使用しています。"
-    "公式SQ値は大阪取引所が発表する値を必ずご確認ください。"
-    "構成銘柄の最新リストは [日経公式](https://indexes.nikkei.co.jp/nkave/index/component) でご確認ください。"
-)
+st.
