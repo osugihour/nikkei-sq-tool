@@ -161,4 +161,8 @@ if st.button("🔄 始値を取得してSQを計算する", type="primary"):
 
 # ── フッター ──────────────────────────────────────────────────
 st.divider()
-st.
+st.caption(
+    "**注意事項**：本ツールはyfinanceの非公式データを使用しています。"
+    "公式SQ値は大阪取引所が発表する値を必ずご確認ください。"
+    "構成銘柄の最新リストは [日経公式](https://indexes.nikkei.co.jp/nkave/index/component) でご確認ください。"
+)
